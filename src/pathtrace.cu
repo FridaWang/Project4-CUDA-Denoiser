@@ -16,6 +16,15 @@
 
 #define ERRORCHECK 1
 
+#define GBUFFER_VIS_TYPE 1
+
+enum VIS_TYPE
+{
+    T = 0,
+    POS = 1,
+    NOR = 2
+};
+
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
@@ -75,10 +84,28 @@ __global__ void gbufferToPBO(uchar4* pbo, glm::ivec2 resolution, GBufferPixel* g
         int index = x + (y * resolution.x);
         float timeToIntersect = gBuffer[index].t * 256.0;
 
-        pbo[index].w = 0;
-        pbo[index].x = timeToIntersect;
-        pbo[index].y = timeToIntersect;
-        pbo[index].z = timeToIntersect;
+        if (GBUFFER_VIS_TYPE == VIS_TYPE::POS) {
+            glm::vec3 pos = gBuffer[index].pos;
+            pos = glm::clamp(abs(pos * 20.f), 0.f, 255.f);
+            pbo[index].w = 0;
+            pbo[index].x = pos.x;
+            pbo[index].y = pos.y;
+            pbo[index].z = pos.z;
+        }
+        else if (GBUFFER_VIS_TYPE == VIS_TYPE::NOR) {
+            glm::vec3 nor = gBuffer[index].nor;
+            nor = glm::clamp(abs(nor * 255.f), 0.f, 255.f);
+            pbo[index].w = 1;
+            pbo[index].x = nor.x;
+            pbo[index].y = nor.y;
+            pbo[index].z = nor.z;
+        }
+        else {
+            pbo[index].w = 0;
+            pbo[index].x = timeToIntersect;
+            pbo[index].y = timeToIntersect;
+            pbo[index].z = timeToIntersect;
+        }
     }
 }
 
@@ -281,7 +308,11 @@ __global__ void generateGBuffer (
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_paths)
   {
-    gBuffer[idx].t = shadeableIntersections[idx].t;
+      ShadeableIntersection isect = shadeableIntersections[idx];
+      Ray ray = pathSegments[idx].ray;
+      gBuffer[idx].t = isect.t;
+      gBuffer[idx].pos = ray.origin + isect.t * ray.direction;
+      gBuffer[idx].nor = isect.surfaceNormal;
   }
 }
 
